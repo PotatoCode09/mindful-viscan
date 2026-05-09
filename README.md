@@ -1,5 +1,5 @@
-# Mindful Viscan | Batch 2025
-### CSci 153: Web Systems and Technologies
+# Mindful Viscan
+### Student Mental Health & Wellness Platform
 
 ![Next.js](https://img.shields.io/badge/Next.js-black?style=for-the-badge&logo=next.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
@@ -11,9 +11,9 @@
 
 ## 📖 About The Project
 
-**Mindful Viscan** is a modern web application designed to support the mental health of the Viscan community. Built for **CSci 153 Batch 2025**, it bridges the gap between students and guidance counselors through a secure, digital interface.
+**Mindful Viscan** is a modern web application designed to support the mental health of the Viscan community. Built to empower students, it bridges the gap between individuals seeking help and guidance counselors providing support through a secure, digital interface.
 
-The system features a strict **Role-Based Access Control (RBAC)** architecture, ensuring a private and distinct experience for Students seeking help and Counselors providing support.
+The system features a strict **Role-Based Access Control (RBAC)** architecture, ensuring a private and distinct experience for Students and Counselors.
 
 ## ✨ Key Features
 
@@ -36,8 +36,8 @@ The system features a strict **Role-Based Access Control (RBAC)** architecture, 
     *   **One-Click Verification**: Streamlined onboarding for new counselors.
     *   **Tabbed Workflow**: Separate views for "Available Requests" and "Active Sessions".
 *   **Chat Workspace**:
-    *   Context-aware sidebar with session status indicators.
-    *   Real-time message updates via Supabase Realtime.
+    *   **Context-aware sidebar** with session status indicators.
+    *   **Real-time message updates** via Supabase Realtime.
 *   **Resource Admin**: Full CRUD capabilities to manage the student resource library.
 
 ## 🛠️ Tech Stack
@@ -65,8 +65,8 @@ Follow these steps to run Mindful Viscan locally.
 
 1.  **Clone the repository**
     ```bash
-    git clone https://github.com/CSci-153-Web-Systems-and-Technologies/batch-2025-mindful-viscan-web.git
-    cd batch-2025-mindful-viscan-web
+    git clone [https://github.com/your-username/mindful-viscan-web.git](https://github.com/your-username/mindful-viscan-web.git)
+    cd mindful-viscan-web
     ```
 
 2.  **Install dependencies**
@@ -80,7 +80,7 @@ Follow these steps to run Mindful Viscan locally.
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
     CLERK_SECRET_KEY=sk_test_...
     
-    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+    NEXT_PUBLIC_SUPABASE_URL=[https://your-project.supabase.co](https://your-project.supabase.co)
     NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbG...
     SUPABASE_SERVICE_ROLE_KEY=ey...
     ```
@@ -88,25 +88,3 @@ Follow these steps to run Mindful Viscan locally.
 4.  **Run the Development Server**
     ```bash
     npm run dev
-    ```
-    Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## 📂 Project Structure
-
-```text
-src/
-├── app/
-│   ├── (auth)/             # Login/Signup routes
-│   ├── (student)/          # Student dashboard & logic
-│   ├── counselor-dashboard/# Counselor admin logic
-│   ├── api/                # Backend API & Webhooks
-│   ├── layout.tsx          # Root layout
-│   └── page.tsx            # Landing page
-├── components/
-│   ├── counseling/         # Chat & Session components
-│   ├── dashboard/          # Mood & History widgets
-│   └── ui/                 # Reusable UI elements
-├── lib/                    # Supabase client & Utils
-├── middleware.ts           # Route guard & Edge logic
-└── public/                 # Static assets
-```
