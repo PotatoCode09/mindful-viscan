@@ -203,10 +203,10 @@ export default function CounselingChatPage() {
 
             <SignedIn>
                 <div className="flex flex-col flex-grow p-4 md:p-8 lg:p-12 pt-24 h-full overflow-hidden">
-                    <div className="w-full mx-auto flex gap-0 h-full shadow-[4px_4px_0px_0px_rgba(34,197,94,0.15)] rounded-2xl overflow-hidden border border-gray-900/50 bg-[#031207] mb-10">
+                    <div className="w-full mx-auto flex max-md:flex-col gap-0 h-full shadow-[4px_4px_0px_0px_rgba(34,197,94,0.15)] rounded-2xl overflow-hidden border border-gray-900/50 bg-[#031207] mb-10">
 
                         {/* Left Sidebar */}
-                        <div className="w-80 md:w-96 flex-shrink-0 h-full border-r border-gray-800 bg-[#031207]">
+                        <div className="max-md:w-full max-md:h-1/3 max-md:border-b max-md:border-r-0 w-80 md:w-96 flex-shrink-0 h-full border-r border-gray-800 bg-[#031207]">
                             <CounselingSidebar
                                 sessions={sessions}
                                 selectedSessionId={selectedSessionId}
@@ -215,7 +215,7 @@ export default function CounselingChatPage() {
                         </div>
 
                         {/* Right Chat Area */}
-                        <div className="flex-1 h-full bg-[#031207]">
+                        <div className="flex-1 h-full bg-[#031207] max-md:min-h-0">
                             <ChatInterface
                                 sessionId={selectedSessionId}
                                 sessionTitle={selectedSession ? `Session with ${selectedSession.student?.full_name || 'Student'}` : undefined}
