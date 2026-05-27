@@ -3,10 +3,10 @@ import Button from './Button';
 
 const HeroCard = () => {
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
+    <div className="flex min-h-screen w-full items-center justify-center p-4 md:p-6">
       {/* Container Note: Removed the bg-[#467854] so the page background shows through */}
 
-      <div className="relative flex flex-col min-w-325 min-h-175 mx-auto rounded-2xl bg-[#031207] p-10 md:p-16 border border--900/50 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.15)]">
+      <div className="relative flex flex-col w-full max-w-4xl mx-auto rounded-2xl bg-[#031207] p-8 md:p-16 border border-gray-900/50 shadow-[4px_4px_0px_0px_rgba(34,197,94,0.15)]">
         {/* ^ That shadow-[...] class is the "light accent border" 
            on the lower right! It creates a solid, non-blurred offset.
         */}
