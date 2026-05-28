@@ -234,4 +234,192 @@ export async function requestCounselingSessionAction(title: string, type: string
   }
 }
 
+export async function getMoodLogsAction() {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated', data: [] };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { data, error } = await supabase
+      .from('mood_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching mood logs in getMoodLogsAction:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+
+    return { success: true, data: data || [] };
+  } catch (error: any) {
+    console.error('getMoodLogsAction Exception:', error);
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+export async function getStudentSessionsAction() {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated', data: [] };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Fetch counseling sessions for this student
+    const { data: sessionData, error: sessionError } = await supabase
+      .from('counseling_sessions')
+      .select('*')
+      .eq('student_id', userId)
+      .order('scheduled_at', { ascending: false });
+
+    if (sessionError) {
+      console.error('Error fetching student sessions:', sessionError);
+      return { success: false, error: sessionError.message, data: [] };
+    }
+
+    if (!sessionData || sessionData.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    // Fetch counselor details securely if counselor_id exists
+    const counselorIds = [...new Set(sessionData.map(s => s.counselor_id).filter(Boolean))];
+    let counselorMap = new Map();
+
+    if (counselorIds.length > 0) {
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .in('id', counselorIds);
+
+      counselorMap = new Map(usersData?.map(u => [u.id, u]));
+    }
+
+    const joinedSessions = sessionData.map(s => ({
+      ...s,
+      counselor: s.counselor_id ? counselorMap.get(s.counselor_id) || null : null
+    }));
+
+    return { success: true, data: joinedSessions };
+  } catch (error: any) {
+    console.error('getStudentSessionsAction Exception:', error);
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+export async function getTodayStatusAction() {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated', mood: null, thoughts: '' };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    // 1. Fetch today's mood
+    const { data: moodData } = await supabase
+      .from('mood_logs')
+      .select('rating')
+      .eq('user_id', userId)
+      .gte('created_at', todayStart.toISOString())
+      .maybeSingle();
+
+    // 2. Fetch today's thoughts
+    const { data: thoughtData } = await supabase
+      .from('thoughts')
+      .select('content')
+      .eq('user_id', userId)
+      .gte('created_at', todayStart.toISOString())
+      .maybeSingle();
+
+    return {
+      success: true,
+      mood: moodData ? moodData.rating : null,
+      thoughts: thoughtData ? thoughtData.content : ''
+    };
+  } catch (error: any) {
+    console.error('getTodayStatusAction Exception:', error);
+    return { success: false, error: error.message, mood: null, thoughts: '' };
+  }
+}
+
+export async function saveThoughtsAction(content: string) {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated' };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { error } = await supabase
+      .from('thoughts')
+      .insert({
+        user_id: userId,
+        content: content.trim()
+      });
+
+    if (error) {
+      console.error('Error saving thoughts:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('saveThoughtsAction Exception:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteSessionsAction(sessionIds: string[]) {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated' };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { error } = await supabase
+      .from('counseling_sessions')
+      .delete()
+      .in('id', sessionIds)
+      .eq('student_id', userId); // Secure constraint
+
+    if (error) {
+      console.error('Error deleting sessions in deleteSessionsAction:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('deleteSessionsAction Exception:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+
+
 

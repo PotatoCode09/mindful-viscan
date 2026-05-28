@@ -2,7 +2,7 @@
 
 import { useUser, useSession } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
+import { getStudentSessionsAction, deleteSessionsAction } from '@/app/actions';
 import RequestSessionModal from './RequestSessionModal';
 
 interface CounselingSession {
@@ -33,109 +33,17 @@ export default function SessionHistory() {
     const fetchSessions = async () => {
         if (!user?.id || !session) return;
 
-        const token = await session.getToken({ template: 'supabase' });
-        const supabase = createAuthenticatedClient(token || '');
-
         try {
             setLoading(true);
+            const res = await getStudentSessionsAction();
 
-            // Try to find user in Supabase - check if id matches Clerk userId or if there's a clerk_id field
-            let studentId = user.id;
-
-            // First try: assume users.id matches Clerk userId
-            const { data: userData, error: userError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            if (userData && !userError) {
-                studentId = userData.id;
-            } else {
-                // If not found, try clerk_id field
-                const { data: userDataByClerkId, error: clerkIdError } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('clerk_id', user.id)
-                    .maybeSingle();
-
-                if (userDataByClerkId && !clerkIdError) {
-                    studentId = userDataByClerkId.id;
-                } else {
-                    // If user not found in Supabase users table, fallback to Clerk ID
-                    // This handles cases where the users table sync hasn't happened yet
-                    console.log('User not found in Supabase users table, falling back to Clerk ID:', user.id);
-                    studentId = user.id;
-                }
-            }
-
-            // Fetch counseling sessions
-            const { data: joinedData, error: joinError } = await supabase
-                .from('counseling_sessions')
-                .select(`
-        id,
-        status,
-        type,
-        title,
-        scheduled_at,
-        counselor_id
-      `)
-                .eq('student_id', studentId)
-                .order('scheduled_at', { ascending: false });
-
-            if (joinError) {
-                // Log detailed error information
-                console.error('Error fetching counseling sessions (Query Failed):');
-                console.error('Student ID used:', studentId);
-                console.error('Error Message:', joinError.message);
-                console.error('Error Code:', joinError.code);
-                console.error('Error Details:', joinError.details);
-                console.error('Full Error Object:', JSON.stringify(joinError, null, 2));
-
-                // Common error: Table doesn't exist or RLS policy issue
-                if (joinError.code === 'PGRST116' || joinError.message?.includes('relation') || joinError.message?.includes('does not exist')) {
-                    console.warn('Possible issue: Table "counseling_sessions" may not exist or RLS policies may be blocking access.');
-                }
-
+            if (!res.success) {
+                console.error('Error fetching sessions:', res.error);
                 setSessions([]);
                 return;
             }
 
-            if (!joinedData) {
-                setSessions([]);
-                return;
-            }
-
-            let sessionsData = joinedData;
-
-            // Fetch counselor info separately if counselor_id exists
-            const counselorIds = [...new Set(joinedData.map((s: any) => s.counselor_id).filter(Boolean))];
-
-            if (counselorIds.length > 0) {
-                const { data: counselorsData, error: counselorsError } = await supabase
-                    .from('users')
-                    .select('id, full_name, email')
-                    .in('id', counselorIds);
-
-                if (counselorsError) {
-                    if (counselorsError) {
-                        console.warn('Warning fetching counselors (names may be missing):', counselorsError);
-                    }
-                }
-
-                // Map counselor data to sessions (even if there was an error, continue with available data)
-                const counselorsMap = new Map(
-                    (counselorsData || []).map((c: any) => [c.id, c])
-                );
-
-                sessionsData = sessionsData.map((session: any) => ({
-                    ...session,
-                    counselor: session.counselor_id ? (counselorsMap.get(session.counselor_id) || null) : null,
-                }));
-            }
-
-            // Transform data to match our interface
-            const transformedSessions = sessionsData.map((session: any) => ({
+            const transformedSessions = (res.data || []).map((session: any) => ({
                 id: session.id,
                 status: session.status || 'Pending',
                 type: session.type || 'General',
@@ -147,6 +55,7 @@ export default function SessionHistory() {
                     email: session.counselor.email,
                 } : null,
             }));
+
             setSessions(transformedSessions);
         } catch (error) {
             console.error('Unexpected error fetching sessions:', error);
@@ -168,16 +77,11 @@ export default function SessionHistory() {
 
         try {
             setIsDeleting(true);
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
 
-            const { error } = await supabase
-                .from('counseling_sessions')
-                .delete()
-                .in('id', Array.from(selectedRows));
+            const res = await deleteSessionsAction(Array.from(selectedRows));
 
-            if (error) {
-                console.error('Error deleting sessions:', error);
+            if (!res.success) {
+                console.error('Error deleting sessions:', res.error);
                 alert('Failed to delete sessions. Please try again.');
             } else {
                 setSelectedRows(new Set());

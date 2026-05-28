@@ -2,7 +2,7 @@
 
 import { useUser, useSession } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
+import { getTodayStatusAction, saveMoodLogAction, saveThoughtsAction } from '@/app/actions';
 
 export default function MoodTracker() {
     const { user, isLoaded } = useUser();
@@ -23,60 +23,16 @@ export default function MoodTracker() {
             if (!user?.id || !session) return;
 
             try {
-                const token = await session.getToken({ template: 'supabase' });
-                const supabase = createAuthenticatedClient(token || '');
-
-                // Get user ID
-                let userId = user.id;
-                const { data: userData } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('id', user.id)
-                    .maybeSingle();
-
-                if (!userData) {
-                    const { data: userDataByClerkId } = await supabase
-                        .from('users')
-                        .select('id')
-                        .eq('clerk_id', user.id)
-                        .maybeSingle();
-
-                    if (userDataByClerkId) {
-                        userId = userDataByClerkId.id;
-                    } else {
-
-                        // Fallback to Clerk ID
-                        userId = user.id;
+                const res = await getTodayStatusAction();
+                if (res.success) {
+                    if (res.mood) {
+                        setSelectedMood(res.mood);
+                    }
+                    if (res.thoughts) {
+                        setThoughts(res.thoughts);
                     }
                 } else {
-                    userId = userData.id;
-                }
-
-                const todayStart = new Date();
-                todayStart.setHours(0, 0, 0, 0);
-
-                // Fetch today's mood
-                const { data: moodData } = await supabase
-                    .from('mood_logs')
-                    .select('rating')
-                    .eq('user_id', userId)
-                    .gte('created_at', todayStart.toISOString())
-                    .maybeSingle();
-
-                if (moodData) {
-                    setSelectedMood(moodData.rating);
-                }
-
-                // Fetch today's thoughts
-                const { data: thoughtData } = await supabase
-                    .from('thoughts')
-                    .select('content')
-                    .eq('user_id', userId)
-                    .gte('created_at', todayStart.toISOString())
-                    .maybeSingle();
-
-                if (thoughtData) {
-                    setThoughts(thoughtData.content);
+                    console.error('Error fetching daily status:', res.error);
                 }
             } catch (error) {
                 console.error('Error fetching daily status:', error);
@@ -93,67 +49,24 @@ export default function MoodTracker() {
         if (!user?.id || isSavingMood || !session) return;
 
         try {
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
-
             setIsSavingMood(true);
 
-            // Get user's Supabase ID (same logic as sessions)
-            let userId = user.id;
-            const { data: userData, error: userFetchError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            if (!userData) {
-                const { data: userDataByClerkId } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('clerk_id', user.id)
-                    .maybeSingle();
-
-                if (userDataByClerkId) {
-                    userId = userDataByClerkId.id;
-                } else {
-
-                    console.log('User not synced to database, utilizing Clerk ID fallback.');
-                    userId = user.id;
-                }
-            } else {
-                userId = userData.id;
-            }
-
             // Check if already logged today
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-
-            const { count } = await supabase
-                .from('mood_logs')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId)
-                .gte('created_at', todayStart.toISOString());
-
-            if (count && count > 0) {
+            const status = await getTodayStatusAction();
+            if (status.success && status.mood !== null) {
                 console.warn("You have already logged your mood for today.");
+                setSelectedMood(status.mood);
                 setIsSavingMood(false);
                 return;
             }
 
             setSelectedMood(moodRating);
 
-            // Insert mood log
-            const { error } = await supabase
-                .from('mood_logs')
-                .insert({
-                    user_id: userId,
-                    rating: moodRating,
-                    note: null,
-                });
+            // Insert mood log using server action
+            const res = await saveMoodLogAction(moodRating, '', '');
 
-            if (error) {
-                console.error('Error saving mood:', error);
-                console.error('Full error details:', JSON.stringify(error, null, 2));
+            if (!res.success) {
+                console.error('Error saving mood:', res.error);
                 setSelectedMood(null);
             }
         } catch (error) {
@@ -169,64 +82,21 @@ export default function MoodTracker() {
         if (!user?.id || !thoughts.trim() || isSavingThoughts || !session) return;
 
         try {
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
-
             setIsSavingThoughts(true);
 
-            // Get user's Supabase ID
-            let userId = user.id;
-            const { data: userData } = await supabase
-                .from('users')
-                .select('id')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            if (!userData) {
-                const { data: userDataByClerkId } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('clerk_id', user.id)
-                    .maybeSingle();
-
-                if (userDataByClerkId) {
-                    userId = userDataByClerkId.id;
-                } else {
-
-                    console.log('User not synced to database, utilizing Clerk ID fallback.');
-                    userId = user.id;
-                }
-            } else {
-                userId = userData.id;
-            }
-
             // Check if already logged today
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-
-            const { count } = await supabase
-                .from('thoughts')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId)
-                .gte('created_at', todayStart.toISOString());
-
-            if (count && count > 0) {
+            const status = await getTodayStatusAction();
+            if (status.success && status.thoughts) {
                 console.warn("You have already logged your thoughts for today.");
                 setIsSavingThoughts(false);
                 return;
             }
 
-            // Insert thought
-            const { error } = await supabase
-                .from('thoughts')
-                .insert({
-                    user_id: userId,
-                    content: thoughts.trim(),
-                });
+            // Insert thought using server action
+            const res = await saveThoughtsAction(thoughts);
 
-            if (error) {
-                console.error('Error saving thoughts:', error);
-                console.error('Full error details:', JSON.stringify(error, null, 2));
+            if (!res.success) {
+                console.error('Error saving thoughts:', res.error);
             } else {
                 // Clear thoughts after successful save
                 setThoughts('');

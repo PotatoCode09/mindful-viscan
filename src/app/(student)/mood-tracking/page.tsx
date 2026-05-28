@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { SignedIn, SignedOut, RedirectToSignIn, useUser, useSession } from '@clerk/nextjs';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
 import MoodHeatmap from '@/app/components/mood/MoodHeatmap';
 import MoodEntry from '@/app/components/mood/MoodEntry';
 import MoodStats from '@/app/components/mood/MoodStats';
+import { getMoodLogsAction } from '@/app/actions';
 
 interface MoodLog {
     id: string;
@@ -24,20 +24,12 @@ export default function MoodTrackingPage() {
     const fetchLogs = useCallback(async () => {
         if (!user || !session) return;
         try {
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await getMoodLogsAction();
 
-            // Fetch logs for current user
-            const { data, error } = await supabase
-                .from('mood_logs')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false }); // Latest first
-
-            if (error) {
-                console.error("Error fetching mood logs:", error);
+            if (!res.success) {
+                console.error("Error fetching mood logs:", res.error);
             } else {
-                setLogs(data || []);
+                setLogs(res.data as MoodLog[] || []);
             }
         } catch (err) {
             console.error(err);
