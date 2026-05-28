@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
 import { useSession, useUser } from '@clerk/nextjs';
+import { saveMoodLogAction } from '@/app/actions';
 
 interface MoodLog {
     id: string;
@@ -53,35 +53,10 @@ export default function MoodEntry({ onEntryAdded, currentLog }: MoodEntryProps) 
 
         try {
             setIsSubmitting(true);
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await saveMoodLogAction(rating, summary, note, currentLog?.id || undefined);
 
-            const payload = {
-                user_id: user.id,
-                rating,
-                summary,
-                note
-            };
-
-            let error;
-
-            if (currentLog) {
-                // Update existing
-                const { error: updateError } = await supabase
-                    .from('mood_logs')
-                    .update(payload)
-                    .eq('id', currentLog.id);
-                error = updateError;
-            } else {
-                // Insert new
-                const { error: insertError } = await supabase
-                    .from('mood_logs')
-                    .insert(payload);
-                error = insertError;
-            }
-
-            if (error) {
-                console.error("Error submitting mood:", error);
+            if (!res.success) {
+                console.error("Error submitting mood:", res.error);
                 alert("Failed to save mood entry.");
             } else {
                 setSummary('');

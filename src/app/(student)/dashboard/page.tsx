@@ -28,16 +28,24 @@ export default function StudentDashboard() {
 
         // 1. Ensure user exists in Supabase (Self-Healing)
         // This prevents FK violation if webhook hasn't fired yet
-        const { error: userError } = await supabase
+        const { data: existingUser } = await supabase
           .from('users')
-          .upsert({
-            id: user.id,
-            full_name: user.fullName || user.firstName || 'User',
-            role: 'student'
-          }, { onConflict: 'id' });
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
 
-        if (userError) {
-          console.error("Failed to ensure user exists for login tracking:", JSON.stringify(userError, null, 2));
+        if (!existingUser) {
+          const { error: userError } = await supabase
+            .from('users')
+            .insert({
+              id: user.id,
+              full_name: user.fullName || user.firstName || 'User',
+              role: 'student'
+            });
+
+          if (userError) {
+            console.error("Failed to ensure user exists for login tracking:", JSON.stringify(userError, null, 2));
+          }
         }
 
         // 2. Attempt to insert login record for today

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSession, useUser } from '@clerk/nextjs';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
+import { requestCounselingSessionAction } from '@/app/actions';
 
 interface RequestSessionModalProps {
     isOpen: boolean;
@@ -42,52 +42,10 @@ export default function RequestSessionModal({ isOpen, onClose, onSuccess }: Requ
             setIsSubmitting(true);
             setError('');
 
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await requestCounselingSessionAction(title, type);
 
-
-
-            // Get user's Supabase ID
-            let studentId = user.id;
-            const { data: userData } = await supabase
-                .from('users')
-                .select('id')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            if (!userData) {
-                // User definitely not in Supabase. Attempt to self-register (Upsert).
-                const fullName = user.fullName || user.firstName || 'User';
-
-                const { error: upsertError } = await supabase
-                    .from('users')
-                    .upsert({
-                        id: user.id, // Use Clerk ID as ID
-                        full_name: fullName,
-                        role: 'student', // Default
-                    }, { onConflict: 'id' });
-
-                if (upsertError) {
-                    console.error('Failed to auto-create user record:', upsertError);
-                    throw new Error('User synchronization failed. Please refresh and try again.');
-                }
-                studentId = user.id;
-            } else {
-                studentId = userData.id;
-            }
-
-            const { error: insertError } = await supabase
-                .from('counseling_sessions')
-                .insert({
-                    student_id: studentId,
-                    title: title.trim(),
-                    type: type,
-                    scheduled_at: null, // No specific time requested
-                    status: 'Pending', // Default status
-                });
-
-            if (insertError) {
-                throw insertError;
+            if (!res.success) {
+                throw new Error(res.error || 'Failed to request session');
             }
 
             // Reset and close
