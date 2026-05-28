@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession, useUser } from '@clerk/nextjs';
 import { getCounselorSessionsAction, updateSessionStatusAction } from '@/app/actions';
+import { createAuthenticatedClient } from '@/lib/supabaseClient';
 
 interface Student {
     id: string;
