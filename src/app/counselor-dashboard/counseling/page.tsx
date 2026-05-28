@@ -5,6 +5,8 @@ import { SignedIn, SignedOut, RedirectToSignIn, useUser, useSession } from '@cle
 import CounselingSidebar, { Session } from '@/app/components/counseling/CounselingSidebar';
 import ChatInterface, { Message } from '@/app/components/counseling/ChatInterface';
 import { getCounselorSessionsAction, getMessagesAction, sendMessageAction } from '@/app/actions';
+import { createAuthenticatedClient } from '@/lib/supabaseClient';
+
 
 export default function CounselingChatPage() {
     const { user } = useUser();
@@ -56,13 +58,16 @@ export default function CounselingChatPage() {
         }
     }, [session]);
 
-    // Fetch Messages
+    // Fetch Messages & Subscribe to Realtime Updates
     useEffect(() => {
         if (!selectedSessionId || !session) return;
 
-        const fetchMessages = async () => {
+        let channel: any;
+
+        const setupChatRealtime = async () => {
             setLoadingMessages(true);
             try {
+                // 1. Initial secure server-side message fetch
                 const res = await getMessagesAction(selectedSessionId);
                 if (res.success) {
                     setMessages(res.data as Message[] || []);
@@ -74,13 +79,50 @@ export default function CounselingChatPage() {
             } finally {
                 setLoadingMessages(false);
             }
+
+            // 2. Set up realtime postgres insert listener for the active session
+            try {
+                const token = await session.getToken({ template: 'supabase' });
+                const supabase = createAuthenticatedClient(token || '');
+
+                channel = supabase
+                    .channel(`session-chat-${selectedSessionId}`)
+                    .on(
+                        'postgres_changes',
+                        {
+                            event: 'INSERT',
+                            schema: 'public',
+                            table: 'messages',
+                            filter: `session_id=eq.${selectedSessionId}`
+                        },
+                        (payload) => {
+                            const newMsg = payload.new as Message;
+                            setMessages((prev) => {
+                                // Prevent duplicates and link optimistic UI temporary messages
+                                const exists = prev.some(
+                                    (m) => m.id === newMsg.id || 
+                                    (m.content === newMsg.content && m.sender_id === newMsg.sender_id && Math.abs(new Date(m.created_at).getTime() - new Date(newMsg.created_at).getTime()) < 5000)
+                                );
+                                if (exists) {
+                                    return prev.map((m) => m.id.startsWith('temp-') && m.content === newMsg.content ? newMsg : m);
+                                }
+                                return [...prev, newMsg];
+                            });
+                        }
+                    )
+                    .subscribe();
+            } catch (realtimeErr) {
+                console.error("Realtime subscription setup failed:", realtimeErr);
+            }
         };
 
-        fetchMessages();
+        setupChatRealtime();
 
-        // Realtime Subscription fallback (remains for live chat experience)
-        // Note: Realtime handles its own auth or fallback silently in the background
-        // but initial message loading is now fully secure on the server!
+        return () => {
+            if (channel) {
+                channel.unsubscribe();
+            }
+        };
     }, [selectedSessionId, session]);
 
 
