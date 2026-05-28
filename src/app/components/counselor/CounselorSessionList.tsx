@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession, useUser } from '@clerk/nextjs';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
+import { getCounselorSessionsAction, updateSessionStatusAction } from '@/app/actions';
 
 interface Student {
     id: string;
@@ -36,41 +36,15 @@ export default function CounselorSessionList() {
 
         try {
             setLoading(true);
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await getCounselorSessionsAction();
 
-            // Fetch sessions
-            const { data: sessionData, error } = await supabase
-                .from('counseling_sessions')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) {
-                console.error('Error fetching sessions:', error);
+            if (!res.success) {
+                console.error('Error fetching sessions:', res.error);
                 setSessions([]);
                 return;
             }
 
-            // Fetch student details manually
-            if (sessionData && sessionData.length > 0) {
-                const studentIds = [...new Set(sessionData.map(s => s.student_id))];
-
-                const { data: usersData } = await supabase
-                    .from('users')
-                    .select('id, full_name')
-                    .in('id', studentIds);
-
-                const userMap = new Map(usersData?.map(u => [u.id, u]));
-
-                const joinedSessions = sessionData.map(s => ({
-                    ...s,
-                    student: userMap.get(s.student_id)
-                }));
-                setSessions(joinedSessions);
-            } else {
-                setSessions([]);
-            }
-
+            setSessions(res.data as Session[] || []);
         } catch (error) {
             console.error('Unexpected error:', error);
         } finally {
@@ -83,29 +57,12 @@ export default function CounselorSessionList() {
         setActionLoading(sessionId);
 
         try {
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await updateSessionStatusAction(sessionId, action);
 
-            let updates: any = {};
-
-            if (action === 'Accept') {
-                updates = { status: 'Active', counselor_id: user.id };
-            } else if (action === 'Decline') {
-                updates = { status: 'Cancelled' };
-            } else if (action === 'Complete') {
-                updates = { status: 'Completed' };
-            }
-
-            const { error } = await supabase
-                .from('counseling_sessions')
-                .update(updates)
-                .eq('id', sessionId);
-
-            if (error) {
-                console.error(`Error performing ${action}:`, error);
+            if (!res.success) {
+                console.error(`Error performing ${action}:`, res.error);
                 alert(`Failed to ${action.toLowerCase()} session.`);
             } else {
-                // Optimistic update or refetch
                 fetchSessions();
             }
         } catch (error) {

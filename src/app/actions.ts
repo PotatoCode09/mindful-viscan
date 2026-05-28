@@ -420,6 +420,211 @@ export async function deleteSessionsAction(sessionIds: string[]) {
   }
 }
 
+export async function getCounselorSessionsAction() {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated', data: [] };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // 1. Double check that the user is actually a counselor in users table
+    const { data: userData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!userData || userData.role !== 'counselor') {
+      console.warn(`User ${userId} attempted to access counselor sessions but is not a counselor`);
+      return { success: false, error: 'Not authorized as a counselor', data: [] };
+    }
+
+    // 2. Fetch all counseling sessions (Requests + My Sessions) securely on the server
+    const { data: sessionData, error: sessionError } = await supabase
+      .from('counseling_sessions')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (sessionError) {
+      console.error('Error fetching counselor sessions:', sessionError);
+      return { success: false, error: sessionError.message, data: [] };
+    }
+
+    if (!sessionData || sessionData.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    // 3. Fetch student user details manually
+    const studentIds = [...new Set(sessionData.map(s => s.student_id))];
+    const { data: usersData } = await supabase
+      .from('users')
+      .select('id, full_name')
+      .in('id', studentIds);
+
+    const userMap = new Map(usersData?.map(u => [u.id, u]));
+
+    const joinedSessions = sessionData.map(s => ({
+      ...s,
+      student: userMap.get(s.student_id) || null
+    }));
+
+    return { success: true, data: joinedSessions };
+  } catch (error: any) {
+    console.error('getCounselorSessionsAction Exception:', error);
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+export async function updateSessionStatusAction(sessionId: string, action: 'Accept' | 'Decline' | 'Complete') {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated' };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Verify they are a counselor
+    const { data: userData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!userData || userData.role !== 'counselor') {
+      return { success: false, error: 'Not authorized as a counselor' };
+    }
+
+    let updates: any = {};
+    if (action === 'Accept') {
+      updates = { status: 'Active', counselor_id: userId };
+    } else if (action === 'Decline') {
+      updates = { status: 'Cancelled' };
+    } else if (action === 'Complete') {
+      updates = { status: 'Completed' };
+    }
+
+    const { error } = await supabase
+      .from('counseling_sessions')
+      .update(updates)
+      .eq('id', sessionId);
+
+    if (error) {
+      console.error('Error updating session status in updateSessionStatusAction:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('updateSessionStatusAction Exception:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getMessagesAction(sessionId: string) {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated', data: [] };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Verify user is part of the session (student or counselor)
+    const { data: session } = await supabase
+      .from('counseling_sessions')
+      .select('student_id, counselor_id')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    if (!session) {
+      return { success: false, error: 'Session not found', data: [] };
+    }
+
+    if (session.student_id !== userId && session.counselor_id !== userId) {
+      return { success: false, error: 'Not authorized to view these messages', data: [] };
+    }
+
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching messages:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+
+    return { success: true, data: data || [] };
+  } catch (error: any) {
+    console.error('getMessagesAction Exception:', error);
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+export async function sendMessageAction(sessionId: string, content: string) {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated' };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Verify user is part of the session
+    const { data: session } = await supabase
+      .from('counseling_sessions')
+      .select('student_id, counselor_id')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    if (!session) {
+      return { success: false, error: 'Session not found' };
+    }
+
+    if (session.student_id !== userId && session.counselor_id !== userId) {
+      return { success: false, error: 'Not authorized to send messages in this session' };
+    }
+
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        session_id: sessionId,
+        sender_id: userId,
+        content: content.trim()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error in sendMessageAction:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error: any) {
+    console.error('sendMessageAction Exception:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+
+
 
 
 
