@@ -53,38 +53,25 @@ export default function RequestSessionModal({ isOpen, onClose, onSuccess }: Requ
                 .from('users')
                 .select('id')
                 .eq('id', user.id)
-                .single();
+                .maybeSingle();
 
             if (!userData) {
-                // If user not found, try to find by clerk_id
-                const { data: userDataClerk } = await supabase
+                // User definitely not in Supabase. Attempt to self-register (Upsert).
+                const fullName = user.fullName || user.firstName || 'User';
+
+                const { error: upsertError } = await supabase
                     .from('users')
-                    .select('id')
-                    .eq('clerk_id', user.id)
-                    .maybeSingle();
+                    .upsert({
+                        id: user.id, // Use Clerk ID as ID
+                        full_name: fullName,
+                        role: 'student', // Default
+                    }, { onConflict: 'id' });
 
-                if (userDataClerk) {
-                    studentId = userDataClerk.id;
-                } else {
-                    // User definitely not in Supabase. Attempt to self-register (Upsert).
-                    const email = user.primaryEmailAddress?.emailAddress || '';
-                    const fullName = user.fullName || user.firstName || 'User';
-
-                    const { error: upsertError } = await supabase
-                        .from('users')
-                        .upsert({
-                            id: user.id, // Use Clerk ID as ID (since we moving to text IDs)
-                            full_name: fullName,
-                            role: 'student', // Default
-                            avatar_url: user.imageUrl
-                        }, { onConflict: 'id' });
-
-                    if (upsertError) {
-                        console.error('Failed to auto-create user record:', upsertError);
-                        throw new Error('User synchronization failed. Please refresh and try again.');
-                    }
-                    studentId = user.id;
+                if (upsertError) {
+                    console.error('Failed to auto-create user record:', upsertError);
+                    throw new Error('User synchronization failed. Please refresh and try again.');
                 }
+                studentId = user.id;
             } else {
                 studentId = userData.id;
             }
