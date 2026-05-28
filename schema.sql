@@ -32,6 +32,7 @@ create table public.mood_logs (
   id uuid primary key default gen_random_uuid(),
   user_id text references public.users(id),
   rating int, -- 1 to 5
+  summary text,
   note text,
   created_at timestamp with time zone default now()
 );
@@ -48,7 +49,9 @@ create table public.thoughts (
 create table public.resources (
   id uuid primary key default gen_random_uuid(),
   title text,
+  description text,
   type text, -- 'Article', 'Video'
+  content_type text, -- Category: 'Academic', 'Health', 'Social', 'Personal'
   content text, -- or URL
   created_at timestamp with time zone default now()
 );
