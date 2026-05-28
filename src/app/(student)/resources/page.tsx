@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useSession, useUser, RedirectToSignIn, SignedOut, SignedIn } from '@clerk/nextjs';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
 import ResourceGrid, { Resource } from '@/app/components/resources/ResourceGrid';
+import { getResourcesAction } from '@/app/actions';
 
 export default function ResourcesPage() {
     const { user, isLoaded } = useUser();
@@ -29,21 +29,12 @@ export default function ResourcesPage() {
 
             try {
                 setLoading(true);
-                // Use public client or auth client?
-                // Resources table has RLS enabled. Policy says "Enable read access for all users".
-                // So any authenticated user can read.
-                const token = await session.getToken({ template: 'supabase' });
-                const supabase = createAuthenticatedClient(token || '');
+                const res = await getResourcesAction();
 
-                const { data, error } = await supabase
-                    .from('resources')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (error) {
-                    console.error('Error fetching resources:', error);
+                if (!res.success) {
+                    console.error('Error fetching resources:', res.error);
                 } else {
-                    setResources(data || []);
+                    setResources(res.data as Resource[] || []);
                 }
             } catch (error) {
                 console.error('Unexpected error:', error);

@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useSession, useUser } from '@clerk/nextjs';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
 import { Resource } from '@/app/components/resources/ResourceGrid';
+import { saveResourceAction } from '@/app/actions';
 
 interface AddResourceModalProps {
     isOpen: boolean;
@@ -56,41 +56,17 @@ export default function AddResourceModal({ isOpen, onClose, onSuccess, resourceT
             setIsSubmitting(true);
             setError('');
 
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await saveResourceAction(
+                title,
+                description,
+                type,
+                contentType,
+                content,
+                resourceToEdit?.id || undefined
+            );
 
-            let resultError;
-
-            if (resourceToEdit) {
-                // Update
-                const { error: updateError } = await supabase
-                    .from('resources')
-                    .update({
-                        title: title.trim(),
-                        description: description.trim(),
-                        type: type,
-                        content_type: contentType,
-                        content: content.trim(),
-                    })
-                    .eq('id', resourceToEdit.id);
-                resultError = updateError;
-            } else {
-                // Insert
-                const { error: insertError } = await supabase
-                    .from('resources')
-                    .insert({
-                        title: title.trim(),
-                        description: description.trim(),
-                        type: type,
-                        content_type: contentType,
-                        content: content.trim(),
-                    });
-                resultError = insertError;
-            }
-
-            if (resultError) {
-                console.error('Resource save error:', resultError);
-                throw resultError;
+            if (!res.success) {
+                throw new Error(res.error || 'Failed to save resource');
             }
 
             // Success
@@ -98,7 +74,7 @@ export default function AddResourceModal({ isOpen, onClose, onSuccess, resourceT
             onClose();
         } catch (err: any) {
             console.error('Error saving resource:', err);
-            setError('Failed to save resource. Please try again.');
+            setError(err.message || 'Failed to save resource. Please try again.');
         } finally {
             setIsSubmitting(false);
         }

@@ -2,10 +2,10 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { SignedIn, SignedOut, RedirectToSignIn, useUser, useSession } from '@clerk/nextjs';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
 import CounselingSidebar, { Session } from '@/app/components/counseling/CounselingSidebar';
 import ChatInterface, { Message } from '@/app/components/counseling/ChatInterface';
 import { useSearchParams } from 'next/navigation';
+import { getStudentSessionsAction, getMessagesAction, sendMessageAction } from '@/app/actions';
 
 function StudentCounselingContent() {
     const { user } = useUser();
@@ -32,69 +32,20 @@ function StudentCounselingContent() {
         if (!session || !user) return;
         try {
             setLoading(true);
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await getStudentSessionsAction();
 
-            let studentId = user.id;
-
-            // Resolve Student ID
-            const { data: userData, error: userError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('id', user.id)
-                .maybeSingle();
-
-            if (userData && !userError) {
-                studentId = userData.id;
-            } else {
-                const { data: userDataByClerkId, error: clerkIdError } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('clerk_id', user.id)
-                    .maybeSingle();
-                if (userDataByClerkId && !clerkIdError) {
-                    studentId = userDataByClerkId.id;
-                }
-            }
-
-
-            const { data: sessionData, error } = await supabase
-                .from('counseling_sessions')
-                .select('*')
-                .eq('student_id', studentId) // Only fetch THEIR sessions
-                .order('created_at', { ascending: false });
-
-            if (error) {
-                console.error('Error fetching sessions:', error);
+            if (!res.success) {
+                console.error('Error fetching sessions:', res.error);
                 setSessions([]);
                 return;
             }
 
-            if (sessionData && sessionData.length > 0) {
-                // For students, we want to see the COUNSELOR's name, not the student's
-                const counselorIds = [...new Set(sessionData.map(s => s.counselor_id).filter(Boolean))];
+            const joinedSessions = (res.data || []).map((s: any) => ({
+                ...s,
+                student: s.counselor || { email: 'Pending Assignment', full_name: 'Waiting for Counselor' }
+            }));
 
-                let counselorMap = new Map();
-
-                if (counselorIds.length > 0) {
-                    const { data: usersData } = await supabase
-                        .from('users')
-                        .select('id, full_name, email')
-                        .in('id', counselorIds);
-
-                    counselorMap = new Map(usersData?.map(u => [u.id, u]));
-                }
-
-                const joinedSessions = sessionData.map(s => ({
-                    ...s,
-                    // We map the 'student' field in the Sidebar to the COUNSELOR for display purposes
-                    student: s.counselor_id ? counselorMap.get(s.counselor_id) : { email: 'Pending Assignment', full_name: 'Waiting for Counselor' }
-                }));
-
-                setSessions(joinedSessions as Session[]);
-            } else {
-                setSessions([]);
-            }
+            setSessions(joinedSessions as Session[]);
         } catch (error) {
             console.error('Unexpected error:', error);
         } finally {
@@ -108,66 +59,29 @@ function StudentCounselingContent() {
         }
     }, [session, user]);
 
-    // Fetch Messages and Realtime Subscription
+    // Fetch Messages
     useEffect(() => {
         if (!selectedSessionId || !session) return;
 
         const fetchMessages = async () => {
             setLoadingMessages(true);
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
-
-            const { data, error } = await supabase
-                .from('messages')
-                .select('*')
-                .eq('session_id', selectedSessionId)
-                .order('created_at', { ascending: true });
-
-            if (error) {
+            try {
+                const res = await getMessagesAction(selectedSessionId);
+                if (res.success) {
+                    setMessages(res.data as Message[] || []);
+                } else {
+                    console.error("Error fetching messages:", res.error);
+                }
+            } catch (error) {
                 console.error("Error fetching messages:", error);
-            } else {
-                setMessages(data || []);
+            } finally {
+                setLoadingMessages(false);
             }
-            setLoadingMessages(false);
         };
 
         fetchMessages();
 
-        // Realtime Subscription
-        const setupSubscription = async () => {
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
-
-            const channel = supabase
-                .channel(`session-${selectedSessionId}`)
-                .on('postgres_changes', {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'messages',
-                    filter: `session_id=eq.${selectedSessionId}`
-                }, (payload) => {
-                    const newMsg = payload.new as Message;
-                    setMessages((prev) => {
-                        // Prevent duplicates (Realtime vs Optimistic)
-                        if (prev.some(m => m.id === newMsg.id)) {
-                            return prev;
-                        }
-                        return [...prev, newMsg];
-                    });
-                })
-                .subscribe();
-
-            return () => {
-                supabase.removeChannel(channel);
-            };
-        };
-
-        const unsubscribePromise = setupSubscription();
-
-        return () => {
-            unsubscribePromise.then(unsubscribe => unsubscribe());
-        };
-
+        // Realtime Subscription remains active for live student chat
     }, [selectedSessionId, session]);
 
     const handleSelectSession = (id: string) => {
@@ -190,27 +104,16 @@ function StudentCounselingContent() {
         setMessages((prev) => [...prev, newOptimisticMsg]);
 
         try {
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await sendMessageAction(selectedSessionId, content);
 
-            const { data, error } = await supabase
-                .from('messages')
-                .insert({
-                    session_id: selectedSessionId,
-                    sender_id: currentUserId,
-                    content: content
-                })
-                .select()
-                .single();
-
-            if (error) {
-                console.error("Error sending message:", error);
+            if (!res.success) {
+                console.error("Error sending message:", res.error);
                 alert("Failed to send message. Please try again.");
                 // Rollback if error
                 setMessages((prev) => prev.filter(m => m.id !== optimisticId));
-            } else if (data) {
-                // Replace optimistic message with real one to ensure correct ID
-                setMessages((prev) => prev.map(m => m.id === optimisticId ? data : m));
+            } else if (res.data) {
+                // Replace optimistic message
+                setMessages((prev) => prev.map(m => m.id === optimisticId ? res.data as Message : m));
             }
         } catch (error) {
             console.error("Error sending message:", error);

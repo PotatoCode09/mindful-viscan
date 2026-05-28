@@ -623,6 +623,135 @@ export async function sendMessageAction(sessionId: string, content: string) {
   }
 }
 
+export async function getResourcesAction() {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { data, error } = await supabase
+      .from('resources')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching resources:', error);
+      return { success: false, error: error.message, data: [] };
+    }
+
+    return { success: true, data: data || [] };
+  } catch (error: any) {
+    console.error('getResourcesAction Exception:', error);
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+export async function saveResourceAction(
+  title: string,
+  description: string,
+  type: string,
+  contentType: string,
+  content: string,
+  resourceId?: string
+) {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated' };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Verify counselor permission
+    const { data: userData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!userData || userData.role !== 'counselor') {
+      return { success: false, error: 'Not authorized as a counselor' };
+    }
+
+    let error;
+    const payload = {
+      title: title.trim(),
+      description: description.trim(),
+      type: type,
+      content_type: contentType,
+      content: content.trim()
+    };
+
+    if (resourceId) {
+      const { error: updateError } = await supabase
+        .from('resources')
+        .update(payload)
+        .eq('id', resourceId);
+      error = updateError;
+    } else {
+      const { error: insertError } = await supabase
+        .from('resources')
+        .insert(payload);
+      error = insertError;
+    }
+
+    if (error) {
+      console.error('Error in saveResourceAction DB query:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('saveResourceAction Exception:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteResourceAction(resourceId: string) {
+  const { userId } = await auth();
+  if (!userId) {
+    return { success: false, error: 'User not authenticated' };
+  }
+
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Verify counselor permission
+    const { data: userData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!userData || userData.role !== 'counselor') {
+      return { success: false, error: 'Not authorized as a counselor' };
+    }
+
+    const { error } = await supabase
+      .from('resources')
+      .delete()
+      .eq('id', resourceId);
+
+    if (error) {
+      console.error('Error deleting resource in deleteResourceAction:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('deleteResourceAction Exception:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+
 
 
 

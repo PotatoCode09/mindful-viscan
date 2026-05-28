@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useSession, useUser } from '@clerk/nextjs';
-import { createAuthenticatedClient } from '@/lib/supabaseClient';
 import ResourceGrid, { Resource } from '@/app/components/resources/ResourceGrid';
 import AddResourceModal from './AddResourceModal';
+import { getResourcesAction, deleteResourceAction } from '@/app/actions';
 
 export default function ResourceManager() {
     const { user, isLoaded } = useUser();
@@ -33,18 +33,12 @@ export default function ResourceManager() {
 
         try {
             setLoading(true);
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await getResourcesAction();
 
-            const { data, error } = await supabase
-                .from('resources')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) {
-                console.error('Error fetching resources:', error);
+            if (!res.success) {
+                console.error('Error fetching resources:', res.error);
             } else {
-                setResources(data || []);
+                setResources(res.data as Resource[] || []);
             }
         } catch (error) {
             console.error('Unexpected error:', error);
@@ -58,16 +52,10 @@ export default function ResourceManager() {
         if (!session) return;
 
         try {
-            const token = await session.getToken({ template: 'supabase' });
-            const supabase = createAuthenticatedClient(token || '');
+            const res = await deleteResourceAction(id);
 
-            const { error } = await supabase
-                .from('resources')
-                .delete()
-                .eq('id', id);
-
-            if (error) {
-                console.error('Error deleting resource:', error);
+            if (!res.success) {
+                console.error('Error deleting resource:', res.error);
                 alert('Failed to delete resource');
             } else {
                 fetchResources(); // Refresh list
